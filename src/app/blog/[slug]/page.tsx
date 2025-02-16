@@ -124,51 +124,40 @@ const Page = ({ params }: { params: { slug: string } }) => {
   const [data, setData] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
+  const [loading, setLoading] = useState(true); // Add loading state
 
   useEffect(() => {
     const fetchData = async () => {
-      const query = `*[_type == 'blog' && slug.current == "${params.slug}"][0]{
-        Title, Paragraph, image, block
-      }`;
-      const blogData = await client.fetch(query);
-      setData(blogData);
+      try {
+        const query = `*[_type == 'blog' && slug.current == $slug][0]{
+          Title, Paragraph, image, block
+        }`;
+        const blogData = await client.fetch(query, { slug: params.slug });
 
-      const commentsQuery = `*[_type == "comment" && blogSlug == "${params.slug}"] | order(_createdAt desc)`;
-      const fetchedComments = await client.fetch(commentsQuery);
-      setComments(fetchedComments);
+        if (blogData) {
+          setData(blogData);
+
+          // Fetch Comments
+          const commentsQuery = `*[_type == "comment" && blogSlug == $slug] | order(_createdAt desc)`;
+          const fetchedComments = await client.fetch(commentsQuery, { slug: params.slug });
+          setComments(fetchedComments);
+        }
+      } catch (error) {
+        console.error("Error fetching blog data:", error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
   }, [params.slug]);
 
-  const handleCommentSubmit = async () => {
-    if (!commentText.trim()) return;
-
-    try {
-      const response = await fetch("/api/post-comment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          blogSlug: params.slug,
-          text: commentText,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to submit comment");
-      }
-
-      setCommentText("");
-      setComments([{ text: commentText }, ...comments]); // Update locally
-    } catch (error) {
-      console.error("Error submitting comment:", error);
-    }
-  };
+  if (loading) {
+    return <div>Loading...</div>;
+  }
 
   if (!data) {
-    return <div>Blog post not found.</div>;
+    return <div className="text-center text-red-500 text-2xl">❌ Blog post not found.</div>;
   }
 
   return (
@@ -200,7 +189,30 @@ const Page = ({ params }: { params: { slug: string } }) => {
         />
         <button
           className="bg-blue-500 text-white px-4 py-2 rounded-lg"
-          onClick={handleCommentSubmit}
+          onClick={async () => {
+            if (!commentText.trim()) return;
+            try {
+              const response = await fetch("/api/post-comment", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  blogSlug: params.slug,
+                  text: commentText,
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error("Failed to submit comment");
+              }
+
+              setCommentText("");
+              setComments([{ text: commentText }, ...comments]); // Update locally
+            } catch (error) {
+              console.error("Error submitting comment:", error);
+            }
+          }}
         >
           Submit Comment
         </button>
