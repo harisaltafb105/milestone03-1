@@ -111,50 +111,29 @@
 // };
 
 // export default Page;
-"use client";
-
-import { useEffect, useState } from "react";
 import { client } from "@/sanity/lib/client";
 import Image from "next/image";
 import { urlFor } from "@/sanity/lib/image";
 import { PortableText } from "next-sanity";
 import Link from "next/link";
+import CommentSection from "@/app/Components/CommentSection";
 
-const Page = ({ params }: { params: { slug: string } }) => {
-  const [data, setData] = useState<any>(null);
-  const [comments, setComments] = useState<any[]>([]);
-  const [commentText, setCommentText] = useState("");
-  const [loading, setLoading] = useState(true); // Add loading state
+export async function generateStaticParams() {
+  // Fetch all blog slugs at build time
+  const query = `*[_type == "blog"]{ slug }`;
+  const blogs = await client.fetch(query);
+  return blogs.map((blog: any) => ({ slug: blog.slug.current }));
+}
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const query = `*[_type == 'blog' && slug.current == $slug][0]{
-          Title, Paragraph, image, block
-        }`;
-        const blogData = await client.fetch(query, { slug: params.slug });
+const fetchBlogData = async (slug: string) => {
+  const query = `*[_type == 'blog' && slug.current == $slug][0]{
+    Title, Paragraph, image, block
+  }`;
+  return client.fetch(query, { slug });
+};
 
-        if (blogData) {
-          setData(blogData);
-
-          // Fetch Comments
-          const commentsQuery = `*[_type == "comment" && blogSlug == $slug] | order(_createdAt desc)`;
-          const fetchedComments = await client.fetch(commentsQuery, { slug: params.slug });
-          setComments(fetchedComments);
-        }
-      } catch (error) {
-        console.error("Error fetching blog data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [params.slug]);
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+export default async function Page({ params }: { params: { slug: string } }) {
+  const data = await fetchBlogData(params.slug);
 
   if (!data) {
     return <div className="text-center text-red-500 text-2xl">❌ Blog post not found.</div>;
@@ -177,59 +156,8 @@ const Page = ({ params }: { params: { slug: string } }) => {
         <PortableText value={data.block} />
       </section>
 
-      {/* Comment Section */}
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Comments</h2>
-        <textarea
-          className="w-full p-2 border rounded-lg mb-2"
-          rows={3}
-          value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
-          placeholder="Write a comment..."
-        />
-        <button
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg"
-          onClick={async () => {
-            if (!commentText.trim()) return;
-            try {
-              const response = await fetch("/api/post-comment", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  blogSlug: params.slug,
-                  text: commentText,
-                }),
-              });
-
-              if (!response.ok) {
-                throw new Error("Failed to submit comment");
-              }
-
-              setCommentText("");
-              setComments([{ text: commentText }, ...comments]); // Update locally
-            } catch (error) {
-              console.error("Error submitting comment:", error);
-            }
-          }}
-        >
-          Submit Comment
-        </button>
-
-        {/* Display Comments */}
-        <div className="mt-6">
-          {comments.length > 0 ? (
-            comments.map((comment, index) => (
-              <div key={index} className="border p-2 rounded-lg mb-2">
-                {comment.text}
-              </div>
-            ))
-          ) : (
-            <p>No comments yet.</p>
-          )}
-        </div>
-      </div>
+      {/* Comment Component */}
+      <CommentSection blogSlug={params.slug} />
 
       <div className="text-center mt-8">
         <Link href="/" passHref>
@@ -240,6 +168,4 @@ const Page = ({ params }: { params: { slug: string } }) => {
       </div>
     </div>
   );
-};
-
-export default Page;
+}
